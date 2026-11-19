@@ -2,15 +2,51 @@ import { createApp } from './app';
 import { env } from './config/env';
 import { logger } from './config/logger';
 import { closeDatabasePool } from './config/database';
-import { closeRedisConnections } from './config/redis';
+import { closeRedisConnections, redis } from './config/redis';
+import { RedisInventoryService } from './services/redisInventoryService';
+import { PubSubCoordinator } from './services/pubSubCoordinator';
+import { SaleRepository } from './repositories';
+import { pool } from './config/database';
 
 /**
  * Main application entry point
  */
 async function main() {
   try {
+    logger.info(
+      {
+        env: env.NODE_ENV,
+        nodeVersion: process.version,
+      },
+      'Starting Flash Sale API'
+    );
+
+    // Initialize services
+    const inventoryService = new RedisInventoryService(redis);
+    const pubSubCoordinator = new PubSubCoordinator(redis);
+    const saleRepository = new SaleRepository(pool);
+
+    // Load Lua scripts into Redis
+    await inventoryService.initialize();
+
+    // Subscribe to pub/sub for circuit breaker coordination
+    await pubSubCoordinator.subscribe();
+
+    // Initialize sale in Redis (if it exists in database)
+    const sale = await saleRepository.findById(env.SALE_ID);
+    if (sale) {
+      await inventoryService.initializeSale(sale.id, sale.totalStock);
+      logger.info(
+        {
+          saleId: sale.id,
+          totalStock: sale.totalStock,
+        },
+        'Sale initialized in Redis'
+      );
+    }
+
     // Create Express app
-    const app = createApp();
+    const app = await createApp();
 
     // Start server
     const server = app.listen(env.API_PORT, () => {
@@ -19,6 +55,7 @@ async function main() {
           port: env.API_PORT,
           env: env.NODE_ENV,
           nodeVersion: process.version,
+          circuitBreakerEnabled: true,
         },
         'Flash Sale API server started'
       );
