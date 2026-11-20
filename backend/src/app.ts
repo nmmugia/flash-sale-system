@@ -1,6 +1,6 @@
 import express, { Request, Response } from 'express';
 import { requestLogger, addRequestId } from './middleware/requestLogger';
-import { errorHandler } from './middleware/errorHandler';
+import { errorHandler, asyncHandler } from './middleware/errorHandler';
 import { loadSheddingMiddleware, getSystemMetrics } from './middleware/loadShedding';
 import { idempotencyMiddleware } from './middleware/idempotency';
 import { establishSSEConnection } from './middleware/sse';
@@ -68,6 +68,45 @@ export async function createApp(): Promise<express.Application> {
     });
   });
 
+  // Admin routes for initialization
+  app.post('/api/admin/initialize-sale', asyncHandler(async (req: Request, res: Response) => {
+    const { saleId } = req.body;
+
+    if (!saleId) {
+      return res.status(400).json({
+        success: false,
+        error: 'saleId is required',
+        code: 'VALIDATION_ERROR',
+      });
+    }
+
+    try {
+      // Get sale from database
+      const sale = await saleRepository.findById(saleId);
+
+      if (!sale) {
+        return res.status(404).json({
+          success: false,
+          error: 'Sale not found',
+          code: 'NOT_FOUND',
+        });
+      }
+
+      // Initialize in Redis
+      await inventoryService.initializeSale(saleId, sale.totalStock);
+
+      return res.json({
+        success: true,
+        message: 'Sale initialized in Redis',
+        saleId,
+        totalStock: sale.totalStock,
+      });
+    } catch (error) {
+      logger.error({ error, saleId }, 'Failed to initialize sale');
+      throw error;
+    }
+  }));
+
   // API Routes
   app.use('/api', createRoutes(
     inventoryService,
@@ -108,7 +147,7 @@ function createRoutes(
   const router = express.Router();
 
   // POST /api/purchases - Attempt to purchase an item
-  router.post('/purchases', async (req: Request, res: Response) => {
+  router.post('/purchases', asyncHandler(async (req: Request, res: Response) => {
     const { userId, saleId } = req.body;
 
     // Validate input
@@ -193,10 +232,10 @@ function createRoutes(
       logger.error({ error, userId, saleId }, 'Purchase endpoint error');
       throw error;
     }
-  });
+  }));
 
   // GET /api/orders/:reservationId - Get order status
-  router.get('/orders/:reservationId', async (req: Request, res: Response) => {
+  router.get('/orders/:reservationId', asyncHandler(async (req: Request, res: Response) => {
     const { reservationId } = req.params;
 
     try {
@@ -226,7 +265,7 @@ function createRoutes(
       logger.error({ error, reservationId }, 'Get order status error');
       throw error;
     }
-  });
+  }));
 
   // GET /api/orders/:reservationId/stream - SSE endpoint for real-time updates
   router.get('/orders/:reservationId/stream', (req: Request, res: Response) => {
@@ -234,7 +273,7 @@ function createRoutes(
   });
 
   // GET /api/sales/:saleId/status - Get sale status
-  router.get('/sales/:saleId/status', async (req: Request, res: Response) => {
+  router.get('/sales/:saleId/status', asyncHandler(async (req: Request, res: Response) => {
     const { saleId } = req.params;
 
     try {
@@ -282,10 +321,10 @@ function createRoutes(
       logger.error({ error, saleId }, 'Get sale status error');
       throw error;
     }
-  });
+  }));
 
   // GET /api/metrics - Get system metrics
-  router.get('/metrics', async (_req: Request, res: Response) => {
+  router.get('/metrics', asyncHandler(async (_req: Request, res: Response) => {
     try {
       const [systemMetrics, queueMetrics] = await Promise.all([
         metricsService.getMetrics(),
@@ -310,7 +349,7 @@ function createRoutes(
       logger.error({ error }, 'Get metrics error');
       throw error;
     }
-  });
+  }));
 
   return router;
 }

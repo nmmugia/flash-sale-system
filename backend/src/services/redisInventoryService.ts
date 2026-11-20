@@ -112,7 +112,7 @@ export class RedisInventoryService {
 
   /**
    * Attempt to purchase an item (ATOMIC OPERATION)
-   * 
+   *
    * Returns:
    * - success: true if purchase successful
    * - reservationId: unique ID for this purchase
@@ -121,6 +121,12 @@ export class RedisInventoryService {
    */
   async attemptPurchase(saleId: string, userId: string): Promise<PurchaseResult> {
     try {
+      // Ensure scripts are loaded
+      if (!this.attemptPurchaseSha) {
+        logger.warn('Lua script SHA not found, reinitializing scripts');
+        await this.initialize();
+      }
+
       // FAST PATH: Check circuit breaker first (in-memory, <0.1ms)
       if (circuitBreaker.isSoldOut(saleId)) {
         logger.debug({ saleId, userId }, 'Request blocked by circuit breaker');
@@ -132,7 +138,7 @@ export class RedisInventoryService {
 
       // SLOW PATH: Execute Redis Lua script (1-2ms)
       const reservationId = uuidv4();
-      
+
       const result = await this.redis.evalsha(
         this.attemptPurchaseSha!,
         1,

@@ -1,4 +1,3 @@
-import { useState, useEffect } from 'react'
 import FlashSale from './components/FlashSale'
 
 function App() {
