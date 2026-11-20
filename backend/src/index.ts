@@ -19,6 +19,28 @@ async function main() {
       'Starting Flash Sale API'
     );
 
+    // Wait for Redis to be ready before initializing services
+    logger.info('Waiting for Redis to be ready...');
+    let redisReady = false;
+    let retries = 0;
+    const maxRetries = 30;
+
+    while (!redisReady && retries < maxRetries) {
+      try {
+        await redis.ping();
+        redisReady = true;
+        logger.info('Redis is ready');
+      } catch (error) {
+        retries++;
+        logger.warn({ retries, maxRetries }, 'Redis not ready, waiting...');
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+
+    if (!redisReady) {
+      throw new Error('Redis failed to become ready after maximum retries');
+    }
+
     // Initialize services
     const inventoryService = new RedisInventoryService(redis);
     const pubSubCoordinator = new PubSubCoordinator(redisPubSub);
@@ -39,7 +61,21 @@ async function main() {
       const saleId = process.env.SALE_ID || '550e8400-e29b-41d4-a716-446655440000';
       const totalStock = parseInt(process.env.SALE_TOTAL_STOCK || '100', 10);
       await inventoryService.initializeSale(saleId, totalStock);
-      logger.info({ saleId, totalStock }, 'Sale auto-initialized in Redis on startup');
+
+      // Cache sale metadata in Redis to avoid DB lookups on every request
+      const { pool } = require('./config/database');
+      const saleResult = await pool.query('SELECT * FROM sales WHERE id = $1', [saleId]);
+      if (saleResult.rows.length > 0) {
+        const saleData = saleResult.rows[0];
+        await redis.setex(`sale:${saleId}`, 3600, JSON.stringify({
+          id: saleData.id,
+          productName: saleData.product_name,
+          totalStock: saleData.total_stock,
+          startTime: saleData.start_time,
+          endTime: saleData.end_time,
+        }));
+        logger.info({ saleId, totalStock }, 'Sale auto-initialized and cached in Redis on startup');
+      }
     } catch (error) {
       logger.warn({ error }, 'Failed to auto-initialize sale - you can manually call POST /api/admin/initialize-sale');
     }

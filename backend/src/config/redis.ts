@@ -11,11 +11,20 @@ const redisOptions = {
   port: env.REDIS_PORT,
   password: env.REDIS_PASSWORD,
   maxRetriesPerRequest: 3,
+  enableReadyCheck: true,
+  enableOfflineQueue: false,
+  connectTimeout: 10000,
+  commandTimeout: 5000,
   retryStrategy: (times: number) => {
+    if (times > 3) {
+      return null; // Stop retrying
+    }
     const delay = Math.min(times * 50, 2000);
     return delay;
   },
   lazyConnect: false,
+  keepAlive: 30000,
+  noDelay: true,
 };
 
 // Main Redis client for operations

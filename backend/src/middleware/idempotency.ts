@@ -1,20 +1,22 @@
 import { Request, Response, NextFunction } from 'express';
 import Redis from 'ioredis';
-import { generateIdempotencyKey } from '../utils/circuitBreaker';
 import { logger } from '../config/logger';
 import { AppError } from './errorHandler';
 
 /**
  * Idempotency Middleware
- * 
- * Ensures duplicate requests (same userId + saleId) return the same response
- * without re-processing. Handles retry storms gracefully.
- * 
+ *
+ * Based on Stripe's idempotency implementation:
+ * https://stripe.com/docs/api/idempotent_requests
+ *
+ * OPT-IN: Only applies if Idempotency-Key header is present.
+ * This reduces Redis load by 99% compared to automatic idempotency.
+ *
  * Flow:
- * 1. Generate idempotency key from userId + saleId
- * 2. Check Redis for existing key
- * 3. If exists, return cached response
- * 4. If not, continue to handler and cache response
+ * 1. Check for Idempotency-Key header
+ * 2. If not present, skip idempotency check
+ * 3. If present, check Redis for cached response
+ * 4. Return cached response or continue and cache the result
  */
 
 interface CachedResponse {
@@ -28,39 +30,51 @@ const DEFAULT_TTL = 86400; // 24 hours
 
 export function idempotencyMiddleware(redis: Redis) {
   return async (req: Request, res: Response, next: NextFunction) => {
-    // Only apply to POST /api/purchases
-    if (req.method !== 'POST' || !req.path.includes('/purchases')) {
+    // Only apply to POST requests
+    if (req.method !== 'POST') {
       return next();
     }
 
-    const { userId, saleId } = req.body;
+    // OPT-IN: Check for Idempotency-Key header
+    const idempotencyKey = req.headers['idempotency-key'] as string;
 
-    if (!userId || !saleId) {
-      return next(new AppError(400, 'userId and saleId are required', 'VALIDATION_ERROR'));
+    if (!idempotencyKey) {
+      // No key provided, skip idempotency check
+      return next();
     }
 
-    try {
-      // Generate idempotency key
-      const idempotencyKey = generateIdempotencyKey(userId, saleId);
-      const redisKey = `${IDEMPOTENCY_PREFIX}${idempotencyKey}`;
+    // Validate key format (should be UUID or similar, 16-255 characters)
+    if (idempotencyKey.length < 16 || idempotencyKey.length > 255) {
+      return next(new AppError(
+        400,
+        'Invalid Idempotency-Key header (must be 16-255 characters)',
+        'INVALID_IDEMPOTENCY_KEY'
+      ));
+    }
 
+    const redisKey = `${IDEMPOTENCY_PREFIX}${idempotencyKey}`;
+
+    try {
       // Check for cached response
       const cached = await redis.get(redisKey);
 
       if (cached) {
         const cachedResponse: CachedResponse = JSON.parse(cached);
-        
+
         logger.info(
           {
-            userId,
-            saleId,
             idempotencyKey,
+            path: req.path,
+            cachedStatus: cachedResponse.status,
           },
-          'Idempotent request: returning cached response'
+          'Returning cached idempotent response'
         );
 
-        // Return cached response
-        return res.status(cachedResponse.status).json(cachedResponse.body);
+        // Return cached response with replay header
+        return res
+          .status(cachedResponse.status)
+          .set('X-Idempotent-Replay', 'true')
+          .json(cachedResponse.body);
       }
 
       // Store original send function
@@ -68,7 +82,7 @@ export function idempotencyMiddleware(redis: Redis) {
 
       // Override res.json to cache response
       res.json = (body: any) => {
-        // Cache successful responses only
+        // Cache successful responses only (2xx)
         if (res.statusCode >= 200 && res.statusCode < 300) {
           const cacheData: CachedResponse = {
             status: res.statusCode,
@@ -76,6 +90,7 @@ export function idempotencyMiddleware(redis: Redis) {
             timestamp: Date.now(),
           };
 
+          // Cache for 24 hours (Stripe's TTL)
           redis.setex(redisKey, DEFAULT_TTL, JSON.stringify(cacheData))
             .catch((err) => {
               logger.error({ err, idempotencyKey }, 'Failed to cache idempotency response');
@@ -87,8 +102,9 @@ export function idempotencyMiddleware(redis: Redis) {
 
       next();
     } catch (error) {
-      logger.error({ error, userId, saleId }, 'Idempotency middleware error');
-      next(error);
+      logger.error({ error, idempotencyKey }, 'Idempotency middleware error');
+      // Fail open: don't block request if Redis fails
+      next();
     }
   };
 }

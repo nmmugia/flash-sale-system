@@ -1,7 +1,8 @@
 import express, { Request, Response } from 'express';
 import { requestLogger, addRequestId } from './middleware/requestLogger';
 import { errorHandler, asyncHandler } from './middleware/errorHandler';
-import { loadSheddingMiddleware, getSystemMetrics } from './middleware/loadShedding';
+import { adaptiveLoadSheddingMiddleware, getAdaptiveLoadSheddingMetrics } from './middleware/adaptiveLoadShedding';
+import { rateLimitMiddleware, defaultRateLimitConfig } from './middleware/rateLimit';
 import { idempotencyMiddleware } from './middleware/idempotency';
 import { establishSSEConnection } from './middleware/sse';
 import { checkDatabaseHealth } from './config/database';
@@ -13,6 +14,7 @@ import { QueueService } from './services/queueService';
 import { MetricsService } from './services/metricsService';
 import { SaleRepository, OrderRepository } from './repositories';
 import { pool } from './config/database';
+import { getSaleWithCache } from './utils/cacheAside';
 
 // Initialize services
 const inventoryService = new RedisInventoryService(redis);
@@ -36,8 +38,11 @@ export async function createApp(): Promise<express.Application> {
   app.use(addRequestId);
   app.use(requestLogger);
 
-  // Load shedding middleware (before expensive operations)
-  app.use(loadSheddingMiddleware);
+  // Rate limiting middleware (before load shedding)
+  app.use(rateLimitMiddleware(redis, defaultRateLimitConfig));
+
+  // Adaptive load shedding middleware (before expensive operations)
+  app.use(adaptiveLoadSheddingMiddleware);
 
   // Idempotency middleware for purchase requests
   app.use(idempotencyMiddleware(redis));
@@ -95,9 +100,18 @@ export async function createApp(): Promise<express.Application> {
       // Initialize in Redis
       await inventoryService.initializeSale(saleId, sale.totalStock);
 
+      // Cache sale metadata
+      await redis.setex(`sale:${saleId}`, 3600, JSON.stringify({
+        id: sale.id,
+        productName: sale.productName,
+        totalStock: sale.totalStock,
+        startTime: sale.startTime,
+        endTime: sale.endTime,
+      }));
+
       return res.json({
         success: true,
-        message: 'Sale initialized in Redis',
+        message: 'Sale initialized and cached in Redis',
         saleId,
         totalStock: sale.totalStock,
       });
@@ -160,8 +174,13 @@ function createRoutes(
     }
 
     try {
-      // Check if sale exists and is active
-      const sale = await saleRepository.findById(saleId);
+      // Check if sale exists and is active (using cache-aside pattern with DB fallback)
+      const sale = await getSaleWithCache(
+        redis,
+        saleId,
+        (id) => saleRepository.findById(id)
+      );
+
       if (!sale) {
         return res.status(404).json({
           success: false,
@@ -170,8 +189,11 @@ function createRoutes(
         });
       }
 
-      const now = new Date();
-      if (now < sale.startTime) {
+      const now = Date.now();
+      const startTime = new Date(sale.startTime).getTime();
+      const endTime = new Date(sale.endTime).getTime();
+
+      if (now < startTime) {
         return res.status(400).json({
           success: false,
           error: 'Sale has not started yet',
@@ -179,7 +201,7 @@ function createRoutes(
         });
       }
 
-      if (now > sale.endTime) {
+      if (now > endTime) {
         return res.status(400).json({
           success: false,
           error: 'Sale has ended',
@@ -331,7 +353,7 @@ function createRoutes(
         queueService.getQueueMetrics(),
       ]);
 
-      const systemLoadMetrics = getSystemMetrics();
+      const systemLoadMetrics = getAdaptiveLoadSheddingMetrics();
 
       return res.json({
         success: true,

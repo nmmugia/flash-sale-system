@@ -15,10 +15,12 @@ const poolConfig: PoolConfig = {
 
   // Pool configuration
   // PgBouncer handles the actual pooling, so we keep this minimal
-  max: 20,
-  min: 2,
+  max: 50,
+  min: 5,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 5000,
+  connectionTimeoutMillis: 2000,
+  query_timeout: 10000,
+  // statement_timeout removed - not supported by PgBouncer
 
   // Application name for monitoring
   application_name: 'flash-sale-api',

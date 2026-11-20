@@ -28,8 +28,8 @@ const envSchema = z.object({
   SALE_ID: z.string().uuid(),
   
   // Load shedding configuration
-  MAX_EVENT_LOOP_LAG_MS: z.string().transform(Number).default('100'),
-  MAX_MEMORY_USAGE_PERCENT: z.string().transform(Number).default('80'),
+  MAX_EVENT_LOOP_LAG_MS: z.string().transform(Number).default('500'),
+  MAX_MEMORY_USAGE_PERCENT: z.string().transform(Number).default('90'),
   
   // Worker configuration (optional, only for worker process)
   WORKER_CONCURRENCY: z.string().transform(Number).optional().default('10'),
