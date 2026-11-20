@@ -79,8 +79,8 @@ export class RedisInventoryService {
   async initialize(): Promise<void> {
     try {
       // Load scripts and store SHA hashes
-      this.attemptPurchaseSha = await this.redis.script('LOAD', ATTEMPT_PURCHASE_SCRIPT);
-      this.returnInventorySha = await this.redis.script('LOAD', RETURN_INVENTORY_SCRIPT);
+      this.attemptPurchaseSha = (await this.redis.script('LOAD', ATTEMPT_PURCHASE_SCRIPT)) as string;
+      this.returnInventorySha = (await this.redis.script('LOAD', RETURN_INVENTORY_SCRIPT)) as string;
       
       logger.info(
         {

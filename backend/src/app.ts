@@ -3,6 +3,7 @@ import { requestLogger, addRequestId } from './middleware/requestLogger';
 import { errorHandler } from './middleware/errorHandler';
 import { loadSheddingMiddleware, getSystemMetrics } from './middleware/loadShedding';
 import { idempotencyMiddleware } from './middleware/idempotency';
+import { establishSSEConnection } from './middleware/sse';
 import { checkDatabaseHealth } from './config/database';
 import { checkRedisHealth, redis, redisPubSub } from './config/redis';
 import { logger } from './config/logger';
@@ -24,7 +25,7 @@ const orderRepository = new OrderRepository(pool);
 /**
  * Create and configure Express application
  */
-export async function createApp() {
+export async function createApp(): Promise<express.Application> {
   const app = express();
 
   // Body parsing middleware
@@ -42,7 +43,7 @@ export async function createApp() {
   app.use(idempotencyMiddleware(redis));
 
   // Health check endpoint (liveness probe)
-  app.get('/health', async (req: Request, res: Response) => {
+  app.get('/health', async (_req: Request, res: Response) => {
     res.status(200).json({
       status: 'healthy',
       timestamp: new Date().toISOString(),
@@ -51,7 +52,7 @@ export async function createApp() {
   });
 
   // Readiness check endpoint
-  app.get('/ready', async (req: Request, res: Response) => {
+  app.get('/ready', async (_req: Request, res: Response) => {
     const dbHealth = await checkDatabaseHealth();
     const redisHealth = await checkRedisHealth();
 
@@ -227,6 +228,11 @@ function createRoutes(
     }
   });
 
+  // GET /api/orders/:reservationId/stream - SSE endpoint for real-time updates
+  router.get('/orders/:reservationId/stream', (req: Request, res: Response) => {
+    establishSSEConnection(req, res);
+  });
+
   // GET /api/sales/:saleId/status - Get sale status
   router.get('/sales/:saleId/status', async (req: Request, res: Response) => {
     const { saleId } = req.params;
@@ -279,7 +285,7 @@ function createRoutes(
   });
 
   // GET /api/metrics - Get system metrics
-  router.get('/metrics', async (req: Request, res: Response) => {
+  router.get('/metrics', async (_req: Request, res: Response) => {
     try {
       const [systemMetrics, queueMetrics] = await Promise.all([
         metricsService.getMetrics(),

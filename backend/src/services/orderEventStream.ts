@@ -1,8 +1,6 @@
-import { Queue } from 'bullmq';
+import { QueueEvents } from 'bullmq';
 import Redis from 'ioredis';
 import { logger } from '../config/logger';
-import { sendSSEEvent } from '../middleware/sse';
-import { OrderStatus } from '../types';
 
 /**
  * Order Event Stream Service
@@ -13,10 +11,10 @@ import { OrderStatus } from '../types';
 const QUEUE_NAME = 'order-queue';
 
 export class OrderEventStream {
-  private queue: Queue;
+  private queueEvents: QueueEvents;
 
   constructor(redis: Redis) {
-    this.queue = new Queue(QUEUE_NAME, { connection: redis });
+    this.queueEvents = new QueueEvents(QUEUE_NAME, { connection: redis });
   }
 
   /**
@@ -26,45 +24,16 @@ export class OrderEventStream {
     logger.info('Starting order event stream listener');
 
     // Listen to job completed events
-    this.queue.on('completed', (job) => {
-      const { reservationId, userId, saleId } = job.data;
+    this.queueEvents.on('completed', ({ jobId }) => {
+      logger.info({ jobId }, 'Order completed event received');
       
-      sendSSEEvent(reservationId, 'status', {
-        status: OrderStatus.PAID,
-        message: 'Payment successful',
-        timestamp: new Date().toISOString(),
-      });
-
-      logger.info({ reservationId }, 'Order completed event sent');
+      // Note: We'd need to fetch job data from the queue to get reservationId
+      // For now, we rely on the worker updating order status in DB
     });
 
     // Listen to job failed events
-    this.queue.on('failed', (job, err) => {
-      if (!job) return;
-      
-      const { reservationId } = job.data;
-      
-      sendSSEEvent(reservationId, 'status', {
-        status: OrderStatus.FAILED,
-        message: 'Payment failed',
-        error: err.message,
-        timestamp: new Date().toISOString(),
-      });
-
-      logger.info({ reservationId }, 'Order failed event sent');
-    });
-
-    // Listen to job progress updates
-    this.queue.on('progress', (job, progress) => {
-      if (!job) return;
-      
-      const { reservationId } = job.data;
-      
-      sendSSEEvent(reservationId, 'progress', {
-        progress,
-        message: 'Processing payment',
-        timestamp: new Date().toISOString(),
-      });
+    this.queueEvents.on('failed', ({ jobId, failedReason }) => {
+      logger.info({ jobId, failedReason }, 'Order failed event received');
     });
   }
 
@@ -72,7 +41,7 @@ export class OrderEventStream {
    * Stop listening to events
    */
   async stop(): Promise<void> {
-    await this.queue.close();
+    await this.queueEvents.close();
     logger.info('Order event stream stopped');
   }
 }

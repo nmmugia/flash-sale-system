@@ -1,35 +1,41 @@
-# Multi-stage build for optimized production image
+# Multi-stage build for optimized production image with pnpm
 
 # Stage 1: Build
 FROM node:20-alpine AS builder
 
+# Install pnpm
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
 WORKDIR /app
 
 # Copy package files
-COPY package*.json ./
+COPY package.json pnpm-lock.yaml* ./
 
 # Install dependencies (including dev dependencies for build)
-RUN npm ci
+# Use --ignore-scripts to skip optional native builds like msgpackr-extract
+RUN pnpm install --frozen-lockfile --ignore-scripts
 
 # Copy source code
 COPY . .
 
 # Build TypeScript
-RUN npm run build
+RUN pnpm run build
 
 # Stage 2: Production
 FROM node:20-alpine
 
-# Install wget for healthchecks
-RUN apk add --no-cache wget
+# Install pnpm and wget for healthchecks
+RUN corepack enable && corepack prepare pnpm@latest --activate && \
+    apk add --no-cache wget
 
 WORKDIR /app
 
 # Copy package files
-COPY package*.json ./
+COPY package.json pnpm-lock.yaml* ./
 
 # Install production dependencies only
-RUN npm ci --only=production && npm cache clean --force
+# Use --ignore-scripts to skip optional native builds like msgpackr-extract
+RUN pnpm install --frozen-lockfile --prod --ignore-scripts
 
 # Copy built application from builder
 COPY --from=builder /app/dist ./dist

@@ -55,7 +55,7 @@ function isSystemOverloaded(): { overloaded: boolean; reason?: string } {
 /**
  * Load shedding middleware
  */
-export function loadSheddingMiddleware(req: Request, res: Response, next: NextFunction) {
+export function loadSheddingMiddleware(req: Request, _res: Response, next: NextFunction) {
   // Skip for health checks
   if (req.path === '/health' || req.path === '/ready') {
     return next();

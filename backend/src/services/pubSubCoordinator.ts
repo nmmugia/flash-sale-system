@@ -16,7 +16,7 @@ export const RESET_CHANNEL_PREFIX = 'sale:reset:';
 export class PubSubCoordinator {
   private subscriber: Redis;
 
-  constructor(private redisPubSub: Redis) {
+  constructor(redisPubSub: Redis) {
     this.subscriber = redisPubSub;
   }
 
@@ -51,7 +51,7 @@ export class PubSubCoordinator {
   /**
    * Handle incoming pub/sub messages
    */
-  private handleMessage(pattern: string, channel: string, message: string): void {
+  private handleMessage(_pattern: string, channel: string, message: string): void {
     try {
       // Extract saleId from channel
       const saleId = this.extractSaleId(channel);

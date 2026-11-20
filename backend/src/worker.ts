@@ -1,5 +1,4 @@
 import { Worker, Job } from 'bullmq';
-import Redis from 'ioredis';
 import { logger } from './config/logger';
 import { env } from './config/env';
 import { pool } from './config/database';

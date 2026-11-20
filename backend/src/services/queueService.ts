@@ -1,4 +1,4 @@
-import { Queue, Worker, Job } from 'bullmq';
+import { Queue } from 'bullmq';
 import Redis from 'ioredis';
 import { logger } from '../config/logger';
 import { OrderJob } from '../types';
@@ -18,10 +18,8 @@ export const QUEUE_NAME = 'order-queue';
 
 export class QueueService {
   private queue: Queue;
-  private redis: Redis;
 
   constructor(redis: Redis) {
-    this.redis = redis;
     
     // Create queue with Redis connection
     this.queue = new Queue(QUEUE_NAME, {
