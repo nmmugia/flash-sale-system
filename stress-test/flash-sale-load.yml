@@ -1,0 +1,50 @@
+config:
+  target: "http://localhost:{{ $processEnvironment.NGINX_PORT }}"
+  phases:
+    # Flash Sale Burst - 10k users hitting simultaneously
+    # Simulates everyone clicking "buy" at the exact moment sale opens
+    - duration: 3
+      arrivalRate: 1000
+      name: Flash Sale Burst (10k users in 3 seconds)
+
+    # Immediate aftermath - stragglers still trying
+    - duration: 5
+      arrivalRate: 100
+      name: Post-burst attempts (2.5k users)
+
+    # Cooldown - checking status and late attempts
+    - duration: 10
+      arrivalRate: 50
+      name: Status checks and late attempts
+      
+  defaults:
+    headers:
+      Content-Type: application/json
+      
+scenarios:
+  # Purchase scenario (80% of traffic)
+  - name: "Purchase Item"
+    weight: 80
+    flow:
+      - post:
+          url: "/api/purchases"
+          json:
+            userId: "user-{{ $randomNumber(1, 100000) }}"
+            saleId: "550e8400-e29b-41d4-a716-446655440000"
+          capture:
+            json: "$.reservationId"
+            as: "reservationId"
+          expect:
+            - statusCode:
+                - 202  # Accepted
+                - 409  # Sold out or already purchased
+            
+  # Check status scenario (20% of traffic)
+  - name: "Check Sale Status"
+    weight: 20
+    flow:
+      - get:
+          url: "/api/sales/550e8400-e29b-41d4-a716-446655440000/status"
+          expect:
+            - statusCode: 200
+            - contentType: json

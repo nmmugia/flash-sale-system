@@ -1,0 +1,49 @@
+config:
+  target: "http://localhost:8081"
+  phases:
+    # Warm-up phase (30 seconds)
+    - duration: 30
+      arrivalRate: 10
+      rampTo: 212
+      name: Warm-up to 212 rps
+
+    # Sustained load at original test rate (4.5 minutes)
+    - duration: 270
+      arrivalRate: 212
+      name: Sustained 212 rps
+
+  defaults:
+    headers:
+      Content-Type: application/json
+
+scenarios:
+  # Purchase scenario (80% of traffic)
+  - name: "Purchase Item"
+    weight: 80
+    flow:
+      - post:
+          url: "/api/purchases"
+          json:
+            userId: "user-{{ $randomNumber(1, 100000) }}"
+            saleId: "550e8400-e29b-41d4-a716-446655440000"
+          capture:
+            json: "$.reservationId"
+            as: "reservationId"
+          expect:
+            - statusCode:
+                - 202  # Accepted
+                - 409  # Sold out or already purchased
+                - 429  # Rate limited
+
+  # Check status scenario (20% of traffic)
+  - name: "Check Sale Status"
+    weight: 20
+    flow:
+      - get:
+          url: "/api/sales/550e8400-e29b-41d4-a716-446655440000/status"
+          expect:
+            - statusCode:
+                - 200
+                - 500
+                - 503
+            - contentType: json
