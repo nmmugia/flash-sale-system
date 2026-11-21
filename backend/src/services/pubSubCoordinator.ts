@@ -16,8 +16,9 @@ export const RESET_CHANNEL_PREFIX = 'sale:reset:';
 export class PubSubCoordinator {
   private subscriber: Redis;
 
-  constructor(redisPubSub: Redis) {
-    this.subscriber = redisPubSub;
+  constructor(redis: Redis) {
+    // Create a separate subscriber connection from the main Redis instance
+    this.subscriber = redis.duplicate();
   }
 
   /**

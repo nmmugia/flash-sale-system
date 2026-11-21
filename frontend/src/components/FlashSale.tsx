@@ -152,128 +152,136 @@ export default function FlashSale() {
     return () => clearInterval(interval);
   }, []);
 
-  const getStatusColor = () => {
-    if (!saleStatus) return 'bg-gray-100';
-    
-    switch (saleStatus.status) {
-      case 'active': return 'bg-green-100 border-green-500';
-      case 'sold_out': return 'bg-red-100 border-red-500';
-      case 'ended': return 'bg-gray-100 border-gray-500';
-      case 'upcoming': return 'bg-blue-100 border-blue-500';
-      default: return 'bg-gray-100';
-    }
-  };
-
   return (
     <div className="space-y-8">
       {/* Sale Status Card */}
       {saleStatus && (
-        <div className={`rounded-lg shadow p-6 border-l-4 ${getStatusColor()}`}>
-          <h2 className="text-2xl font-bold text-gray-900 mb-4">{saleStatus.productName}</h2>
-          
-          {saleStatus.isSoldOut && (
-            <div className="bg-red-500 text-white px-4 py-2 rounded mb-4 font-bold text-center">
-              ⚠️ SOLD OUT
+        <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+          <div className="md:flex">
+            {/* Product Image */}
+            <div className="md:w-1/3">
+              <img
+                src="/images/product-shoe.jpg"
+                alt={saleStatus.productName}
+                className="w-full h-64 md:h-full object-cover"
+              />
             </div>
-          )}
-          
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-white p-4 rounded shadow">
-              <p className="text-sm text-gray-600">Stock Remaining</p>
-              <p className="text-3xl font-bold text-primary-500">{saleStatus.stockRemaining}</p>
-              <p className="text-sm text-gray-500">of {saleStatus.totalStock}</p>
-            </div>
-            
-            <div className="bg-white p-4 rounded shadow">
-              <p className="text-sm text-gray-600">Status</p>
-              <p className="text-xl font-bold capitalize">{saleStatus.status.replace('_', ' ')}</p>
-            </div>
-            
-            <div className="bg-white p-4 rounded shadow">
-              <p className="text-sm text-gray-600">Purchased</p>
-              <p className="text-3xl font-bold text-green-600">{saleStatus.purchasedCount}</p>
+
+            {/* Product Info */}
+            <div className="p-6 md:w-2/3">
+              <h2 className="text-3xl font-bold text-gray-900 mb-2">{saleStatus.productName}</h2>
+
+              {saleStatus.isSoldOut && (
+                <div className="bg-red-500 text-white px-4 py-3 rounded-lg mb-4 font-bold text-center">
+                  ⚠️ SOLD OUT
+                </div>
+              )}
+
+              {!saleStatus.isSoldOut && saleStatus.status === 'active' && (
+                <div className="bg-green-500 text-white px-4 py-3 rounded-lg mb-4 font-semibold text-center">
+                  🔥 LIVE NOW - Limited Stock!
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                <div className="bg-gradient-to-br from-primary-50 to-primary-100 p-4 rounded-lg border border-primary-200">
+                  <p className="text-sm text-gray-600 font-medium">Stock Remaining</p>
+                  <p className="text-4xl font-bold text-primary-600">{saleStatus.stockRemaining}</p>
+                  <p className="text-sm text-gray-500">of {saleStatus.totalStock} items</p>
+                </div>
+
+                <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                  <p className="text-sm text-gray-600 font-medium">Status</p>
+                  <p className="text-xl font-bold capitalize text-gray-900">{saleStatus.status.replace('_', ' ')}</p>
+                </div>
+
+                <div className="bg-gradient-to-br from-green-50 to-green-100 p-4 rounded-lg border border-green-200">
+                  <p className="text-sm text-gray-600 font-medium">Purchased</p>
+                  <p className="text-4xl font-bold text-green-600">{saleStatus.purchasedCount}</p>
+                </div>
+              </div>
             </div>
           </div>
         </div>
       )}
 
       {/* Purchase Form */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <h3 className="text-lg font-semibold mb-4">Purchase Item</h3>
-        
+      <div className="bg-white rounded-xl shadow-lg p-6 border-t-4 border-primary-500">
+        <h3 className="text-xl font-bold mb-4 text-gray-900">Purchase Item</h3>
+
         <form onSubmit={handlePurchase} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
               User ID (email or username)
             </label>
             <input
               type="text"
               value={userId}
               onChange={(e) => setUserId(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors"
               placeholder="user@example.com"
               disabled={loading || saleStatus?.isSoldOut}
             />
           </div>
-          
+
           <button
             type="submit"
             disabled={loading || saleStatus?.isSoldOut || saleStatus?.status !== 'active'}
-            className="w-full bg-primary-500 text-white py-3 px-4 rounded-lg font-semibold hover:bg-primary-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+            className="w-full bg-primary-500 text-white py-4 px-6 rounded-lg font-bold text-lg hover:bg-primary-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-all transform hover:scale-[1.02] active:scale-[0.98] shadow-lg"
           >
-            {loading ? 'Processing...' : 'Buy Now'}
+            {loading ? '⏳ Processing...' : '🛒 Buy Now'}
           </button>
         </form>
 
         {/* Error/Success Messages */}
         {error && (
-          <div className="mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
-            {error}
+          <div className="mt-4 bg-red-50 border-2 border-red-400 text-red-800 px-4 py-3 rounded-lg font-medium">
+            ❌ {error}
           </div>
         )}
-        
+
         {success && (
-          <div className="mt-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded">
-            {success}
+          <div className="mt-4 bg-green-50 border-2 border-green-400 text-green-800 px-4 py-3 rounded-lg font-medium">
+            ✅ {success}
           </div>
         )}
 
         {/* Order Status */}
         {orderStatus && (
-          <div className="mt-4 bg-blue-50 border border-blue-300 text-blue-800 px-4 py-3 rounded">
-            <p className="font-semibold">Order Status: <span className="capitalize">{orderStatus}</span></p>
-            {orderStatus === 'paid' && <p className="text-green-600 mt-2">✓ Payment successful!</p>}
-            {orderStatus === 'failed' && <p className="text-red-600 mt-2">✗ Payment failed</p>}
+          <div className="mt-4 bg-blue-50 border-2 border-blue-300 text-blue-900 px-4 py-3 rounded-lg">
+            <p className="font-bold">Order Status: <span className="capitalize">{orderStatus}</span></p>
+            {orderStatus === 'paid' && <p className="text-green-700 mt-2 font-semibold">✓ Payment successful!</p>}
+            {orderStatus === 'failed' && <p className="text-red-700 mt-2 font-semibold">✗ Payment failed</p>}
           </div>
         )}
       </div>
 
       {/* Metrics Card */}
       {metrics && (
-        <div className="bg-white rounded-lg shadow p-6">
-          <h3 className="text-lg font-semibold mb-4">System Metrics</h3>
-          
+        <div className="bg-white rounded-xl shadow-lg p-6">
+          <h3 className="text-xl font-bold mb-4 text-gray-900">System Performance</h3>
+
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="bg-gray-50 p-3 rounded">
-              <p className="text-xs text-gray-600">Total Requests</p>
-              <p className="text-xl font-bold">{metrics.requests}</p>
+            <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-4 rounded-lg border border-blue-200">
+              <p className="text-xs text-gray-600 font-medium uppercase tracking-wide">Total Requests</p>
+              <p className="text-2xl font-bold text-blue-700">{metrics.requests}</p>
             </div>
-            
-            <div className="bg-gray-50 p-3 rounded">
-              <p className="text-xs text-gray-600">Purchases</p>
-              <p className="text-xl font-bold text-green-600">{metrics.purchases}</p>
+
+            <div className="bg-gradient-to-br from-green-50 to-green-100 p-4 rounded-lg border border-green-200">
+              <p className="text-xs text-gray-600 font-medium uppercase tracking-wide">Purchases</p>
+              <p className="text-2xl font-bold text-green-700">{metrics.purchases}</p>
             </div>
-            
-            <div className="bg-gray-50 p-3 rounded">
-              <p className="text-xs text-gray-600">Circuit Breaker Hits</p>
-              <p className="text-xl font-bold text-red-600">{metrics.circuitBreakerHits}</p>
-              <p className="text-xs text-gray-500">{(metrics.circuitBreakerHitRate * 100).toFixed(1)}% rate</p>
+
+            <div className="bg-gradient-to-br from-red-50 to-red-100 p-4 rounded-lg border border-red-200">
+              <p className="text-xs text-gray-600 font-medium uppercase tracking-wide">Circuit Breaker</p>
+              <p className="text-2xl font-bold text-red-700">{metrics.circuitBreakerHits}</p>
+              <p className="text-xs text-gray-600 mt-1">{(metrics.circuitBreakerHitRate * 100).toFixed(1)}% hit rate</p>
             </div>
-            
-            <div className="bg-gray-50 p-3 rounded">
-              <p className="text-xs text-gray-600">Queue Depth</p>
-              <p className="text-xl font-bold">{metrics.queueDepth}</p>
-              <p className="text-xs text-gray-500">{metrics.queueActive} active</p>
+
+            <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-4 rounded-lg border border-purple-200">
+              <p className="text-xs text-gray-600 font-medium uppercase tracking-wide">Queue Depth</p>
+              <p className="text-2xl font-bold text-purple-700">{metrics.queueDepth}</p>
+              <p className="text-xs text-gray-600 mt-1">{metrics.queueActive} active</p>
             </div>
           </div>
         </div>

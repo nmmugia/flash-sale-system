@@ -78,10 +78,17 @@ export class RedisInventoryService {
    */
   async initialize(): Promise<void> {
     try {
+      // Test Redis connection first
+      await this.redis.ping();
+      logger.info('Redis connection verified before script loading');
+
       // Load scripts and store SHA hashes
+      logger.debug('Loading ATTEMPT_PURCHASE_SCRIPT...');
       this.attemptPurchaseSha = (await this.redis.script('LOAD', ATTEMPT_PURCHASE_SCRIPT)) as string;
+
+      logger.debug('Loading RETURN_INVENTORY_SCRIPT...');
       this.returnInventorySha = (await this.redis.script('LOAD', RETURN_INVENTORY_SCRIPT)) as string;
-      
+
       logger.info(
         {
           attemptPurchaseSha: this.attemptPurchaseSha,
@@ -90,7 +97,15 @@ export class RedisInventoryService {
         'Lua scripts loaded into Redis'
       );
     } catch (error) {
-      logger.error({ error }, 'Failed to load Lua scripts');
+      logger.error({
+        error: error instanceof Error ? {
+          message: error.message,
+          stack: error.stack,
+          name: error.name,
+        } : error,
+        attemptPurchaseSha: this.attemptPurchaseSha,
+        returnInventorySha: this.returnInventorySha,
+      }, 'Failed to load Lua scripts');
       throw error;
     }
   }

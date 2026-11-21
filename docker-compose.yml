@@ -113,8 +113,6 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile.worker
-      # Force separate image build from API
-      target: production
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       POSTGRES_HOST: pgbouncer

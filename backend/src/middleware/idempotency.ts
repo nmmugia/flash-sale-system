@@ -103,7 +103,6 @@ export function idempotencyMiddleware(redis: Redis) {
       next();
     } catch (error) {
       logger.error({ error, idempotencyKey }, 'Idempotency middleware error');
-      // Fail open: don't block request if Redis fails
       next();
     }
   };

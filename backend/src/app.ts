@@ -1,26 +1,20 @@
 import express, { Request, Response } from 'express';
 import { requestLogger, addRequestId } from './middleware/requestLogger';
 import { errorHandler, asyncHandler } from './middleware/errorHandler';
-import { adaptiveLoadSheddingMiddleware, getAdaptiveLoadSheddingMetrics } from './middleware/adaptiveLoadShedding';
-import { rateLimitMiddleware, defaultRateLimitConfig } from './middleware/rateLimit';
 import { idempotencyMiddleware } from './middleware/idempotency';
-import { establishSSEConnection } from './middleware/sse';
 import { checkDatabaseHealth } from './config/database';
-import { checkRedisHealth, redis, redisPubSub } from './config/redis';
+import { checkRedisHealth, redis } from './config/redis';
 import { logger } from './config/logger';
 import { RedisInventoryService } from './services/redisInventoryService';
 import { PubSubCoordinator } from './services/pubSubCoordinator';
 import { QueueService } from './services/queueService';
-import { MetricsService } from './services/metricsService';
 import { SaleRepository, OrderRepository } from './repositories';
 import { pool } from './config/database';
-import { getSaleWithCache } from './utils/cacheAside';
 
 // Initialize services
 const inventoryService = new RedisInventoryService(redis);
-const pubSubCoordinator = new PubSubCoordinator(redisPubSub);
+const pubSubCoordinator = new PubSubCoordinator(redis);
 const queueService = new QueueService(redis);
-const metricsService = new MetricsService(redis);
 const saleRepository = new SaleRepository(pool);
 const orderRepository = new OrderRepository(pool);
 
@@ -34,20 +28,14 @@ export async function createApp(): Promise<express.Application> {
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 
-  // Request logging and tracing
+  // Request logging
   app.use(addRequestId);
   app.use(requestLogger);
 
-  // Rate limiting middleware (before load shedding)
-  app.use(rateLimitMiddleware(redis, defaultRateLimitConfig));
-
-  // Adaptive load shedding middleware (before expensive operations)
-  app.use(adaptiveLoadSheddingMiddleware);
-
-  // Idempotency middleware for purchase requests
+  // Idempotency middleware (opt-in via Idempotency-Key header)
   app.use(idempotencyMiddleware(redis));
 
-  // Health check endpoint (liveness probe)
+  // Health check endpoint
   app.get('/health', async (_req: Request, res: Response) => {
     res.status(200).json({
       status: 'healthy',
@@ -125,7 +113,6 @@ export async function createApp(): Promise<express.Application> {
   app.use('/api', createRoutes(
     inventoryService,
     queueService,
-    metricsService,
     saleRepository,
     orderRepository,
     pubSubCoordinator
@@ -153,7 +140,6 @@ export async function createApp(): Promise<express.Application> {
 function createRoutes(
   inventoryService: RedisInventoryService,
   queueService: QueueService,
-  metricsService: MetricsService,
   saleRepository: SaleRepository,
   orderRepository: OrderRepository,
   pubSubCoordinator: PubSubCoordinator
@@ -174,19 +160,22 @@ function createRoutes(
     }
 
     try {
-      // Check if sale exists and is active (using cache-aside pattern with DB fallback)
-      const sale = await getSaleWithCache(
-        redis,
-        saleId,
-        (id) => saleRepository.findById(id)
-      );
+      // Get sale from cache or database
+      const cachedSale = await redis.get(`sale:${saleId}`);
+      let sale;
 
-      if (!sale) {
-        return res.status(404).json({
-          success: false,
-          error: 'Sale not found',
-          code: 'NOT_FOUND',
-        });
+      if (cachedSale) {
+        sale = JSON.parse(cachedSale);
+      } else {
+        sale = await saleRepository.findById(saleId);
+        if (!sale) {
+          return res.status(404).json({
+            success: false,
+            error: 'Sale not found',
+            code: 'NOT_FOUND',
+          });
+        }
+        await redis.setex(`sale:${saleId}`, 3600, JSON.stringify(sale));
       }
 
       const now = Date.now();
@@ -215,12 +204,12 @@ function createRoutes(
       if (!result.success) {
         // Map error codes to HTTP status
         const statusCode = result.error === 'ALREADY_PURCHASED' ? 409 : 409;
-        
+
         return res.status(statusCode).json({
           success: false,
           error: result.error,
-          message: result.error === 'ALREADY_PURCHASED' 
-            ? 'You have already purchased this item' 
+          message: result.error === 'ALREADY_PURCHASED'
+            ? 'You have already purchased this item'
             : 'Item is sold out',
           code: result.error,
         });
@@ -238,10 +227,6 @@ function createRoutes(
         saleId,
         timestamp: Date.now(),
       });
-
-      // Increment metrics
-      await metricsService.incrementRequests();
-      await metricsService.incrementPurchases();
 
       // Return 202 Accepted
       return res.status(202).json({
@@ -288,11 +273,6 @@ function createRoutes(
       throw error;
     }
   }));
-
-  // GET /api/orders/:reservationId/stream - SSE endpoint for real-time updates
-  router.get('/orders/:reservationId/stream', (req: Request, res: Response) => {
-    establishSSEConnection(req, res);
-  });
 
   // GET /api/sales/:saleId/status - Get sale status
   router.get('/sales/:saleId/status', asyncHandler(async (req: Request, res: Response) => {
@@ -348,23 +328,16 @@ function createRoutes(
   // GET /api/metrics - Get system metrics
   router.get('/metrics', asyncHandler(async (_req: Request, res: Response) => {
     try {
-      const [systemMetrics, queueMetrics] = await Promise.all([
-        metricsService.getMetrics(),
-        queueService.getQueueMetrics(),
-      ]);
-
-      const systemLoadMetrics = getAdaptiveLoadSheddingMetrics();
+      const queueMetrics = await queueService.getQueueMetrics();
 
       return res.json({
         success: true,
         metrics: {
-          ...systemMetrics,
           queueDepth: queueMetrics.total,
           queueWaiting: queueMetrics.waiting,
           queueActive: queueMetrics.active,
           queueCompleted: queueMetrics.completed,
           queueFailed: queueMetrics.failed,
-          systemLoad: systemLoadMetrics,
         },
       });
     } catch (error) {

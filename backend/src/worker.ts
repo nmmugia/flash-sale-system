@@ -11,7 +11,7 @@ import { OrderJob, OrderStatus } from './types';
 
 /**
  * BullMQ Worker Process
- * 
+ *
  * Consumes order jobs from the queue and processes payment.
  * Implements:
  * - Automatic retry with exponential backoff
@@ -30,6 +30,28 @@ async function main() {
     'Starting BullMQ worker'
   );
 
+  // Wait for Redis to be ready before initializing services
+  logger.info('Waiting for Redis to be ready...');
+  let redisReady = false;
+  let retries = 0;
+  const maxRetries = 30;
+
+  while (!redisReady && retries < maxRetries) {
+    try {
+      await redis.ping();
+      redisReady = true;
+      logger.info('Redis is ready');
+    } catch (error) {
+      retries++;
+      logger.warn({ retries, maxRetries }, 'Redis not ready, waiting...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+  }
+
+  if (!redisReady) {
+    throw new Error('Redis failed to become ready after maximum retries');
+  }
+
   // Initialize services
   const inventoryService = new RedisInventoryService(redis);
   const pubSubCoordinator = new PubSubCoordinator(redis);
@@ -37,7 +59,20 @@ async function main() {
   const orderRepository = new OrderRepository(pool);
 
   // Initialize inventory service (load Lua scripts)
-  await inventoryService.initialize();
+  try {
+    logger.info('Initializing inventory service (loading Lua scripts)...');
+    await inventoryService.initialize();
+    logger.info('Inventory service initialized successfully');
+  } catch (error) {
+    logger.fatal({
+      error: error instanceof Error ? {
+        message: error.message,
+        stack: error.stack,
+        name: error.name,
+      } : error,
+    }, 'Failed to initialize inventory service');
+    throw error;
+  }
 
   // Create worker
   const worker = new Worker<OrderJob>(
