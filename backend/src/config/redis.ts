@@ -10,7 +10,7 @@ const redisOptions = {
   host: env.REDIS_HOST,
   port: env.REDIS_PORT,
   password: env.REDIS_PASSWORD,
-  maxRetriesPerRequest: 3,
+  maxRetriesPerRequest: null,
   enableReadyCheck: true,
   enableOfflineQueue: false,
   connectTimeout: 10000,

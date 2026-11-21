@@ -2,18 +2,20 @@ import express, { Request, Response } from 'express';
 import { requestLogger, addRequestId } from './middleware/requestLogger';
 import { errorHandler, asyncHandler } from './middleware/errorHandler';
 import { idempotencyMiddleware } from './middleware/idempotency';
+import { requestTimeout } from './middleware/requestTimeout';
 import { checkDatabaseHealth } from './config/database';
-import { checkRedisHealth, redis } from './config/redis';
+import { checkRedisHealth, redis, redisPubSub } from './config/redis';
 import { logger } from './config/logger';
 import { RedisInventoryService } from './services/redisInventoryService';
 import { PubSubCoordinator } from './services/pubSubCoordinator';
 import { QueueService } from './services/queueService';
 import { SaleRepository, OrderRepository } from './repositories';
 import { pool } from './config/database';
+import { circuitBreaker } from './utils/circuitBreaker';
 
 // Initialize services
 const inventoryService = new RedisInventoryService(redis);
-const pubSubCoordinator = new PubSubCoordinator(redis);
+const pubSubCoordinator = new PubSubCoordinator(redisPubSub);
 const queueService = new QueueService(redis);
 const saleRepository = new SaleRepository(pool);
 const orderRepository = new OrderRepository(pool);
@@ -27,6 +29,9 @@ export async function createApp(): Promise<express.Application> {
   // Body parsing middleware
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
+
+  // Request timeout - MUST BE EARLY to catch queue delays
+  app.use(requestTimeout);
 
   // Request logging
   app.use(addRequestId);
@@ -160,6 +165,17 @@ function createRoutes(
     }
 
     try {
+      // FAST PATH: Check circuit breaker first (in-memory, <0.1ms)
+      // This prevents hammering Redis when sold out
+      if (circuitBreaker.isSoldOut(saleId)) {
+        return res.status(409).json({
+          success: false,
+          error: 'SOLD_OUT',
+          message: 'Item is sold out',
+          code: 'SOLD_OUT',
+        });
+      }
+
       // Get sale from cache or database
       const cachedSale = await redis.get(`sale:${saleId}`);
       let sale;
@@ -217,6 +233,7 @@ function createRoutes(
 
       // Successful reservation - publish soldout if needed
       if (result.stockRemaining === 0) {
+        circuitBreaker.setSoldOut(saleId);
         await pubSubCoordinator.publishSoldOut(saleId);
       }
 

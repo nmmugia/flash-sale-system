@@ -13,14 +13,11 @@ const poolConfig: PoolConfig = {
   user: env.POSTGRES_USER,
   password: env.POSTGRES_PASSWORD,
 
-  // Pool configuration
-  // PgBouncer handles the actual pooling, so we keep this minimal
-  max: 50,
-  min: 5,
+  max: 10,
+  min: 2,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
-  query_timeout: 10000,
-  // statement_timeout removed - not supported by PgBouncer
+  connectionTimeoutMillis: 500,  // Fail fast if can't get connection
+  query_timeout: 1000,  // Fail queries after 1s, not 10s
 
   // Application name for monitoring
   application_name: 'flash-sale-api',

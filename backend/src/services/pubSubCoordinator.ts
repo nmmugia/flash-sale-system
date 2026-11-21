@@ -17,8 +17,9 @@ export class PubSubCoordinator {
   private subscriber: Redis;
 
   constructor(redis: Redis) {
-    // Create a separate subscriber connection from the main Redis instance
-    this.subscriber = redis.duplicate();
+    // Use the provided Redis connection directly (should be redisPubSub)
+    // No need to duplicate since the caller provides a dedicated pub/sub connection
+    this.subscriber = redis;
   }
 
   /**

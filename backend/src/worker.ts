@@ -217,17 +217,41 @@ async function main() {
   process.on('SIGINT', () => shutdown('SIGINT'));
 
   process.on('uncaughtException', (error) => {
+    console.error('=== UNCAUGHT EXCEPTION ===');
+    console.error('Error:', error);
+    console.error('Stack:', error.stack);
     logger.fatal({ error }, 'Uncaught exception in worker');
     process.exit(1);
   });
 
-  process.on('unhandledRejection', (reason) => {
-    logger.fatal({ reason }, 'Unhandled rejection in worker');
+  process.on('unhandledRejection', (reason, promise) => {
+    console.error('=== UNHANDLED REJECTION ===');
+    console.error('Reason:', reason);
+    console.error('Promise:', promise);
+    logger.fatal({ reason, promise: String(promise) }, 'Unhandled rejection in worker');
     process.exit(1);
   });
 }
 
 main().catch((error) => {
-  logger.fatal({ error }, 'Failed to start worker');
+  // Enhanced error logging for debugging
+  console.error('=== WORKER STARTUP FAILED ===');
+  console.error('Error type:', typeof error);
+  console.error('Error constructor:', error?.constructor?.name);
+  console.error('Error message:', error?.message);
+  console.error('Error stack:', error?.stack);
+  console.error('Full error object:', JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
+
+  logger.fatal({
+    error: error instanceof Error ? {
+      message: error.message,
+      stack: error.stack,
+      name: error.name,
+      cause: error.cause,
+    } : String(error),
+    errorType: typeof error,
+    errorConstructor: error?.constructor?.name,
+  }, 'Failed to start worker');
+
   process.exit(1);
 });

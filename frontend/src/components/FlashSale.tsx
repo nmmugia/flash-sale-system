@@ -12,20 +12,10 @@ interface SaleStatus {
   endTime: string;
 }
 
-interface Metrics {
-  requests: number;
-  purchases: number;
-  circuitBreakerHits: number;
-  circuitBreakerHitRate: number;
-  queueDepth: number;
-  queueWaiting: number;
-  queueActive: number;
-}
 
 export default function FlashSale() {
   const [userId, setUserId] = useState('');
   const [saleStatus, setSaleStatus] = useState<SaleStatus | null>(null);
-  const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -47,18 +37,6 @@ export default function FlashSale() {
     }
   };
 
-  // Fetch metrics
-  const fetchMetrics = async () => {
-    try {
-      const response = await fetch(`${API_URL}/metrics`);
-      const data = await response.json();
-      if (data.success) {
-        setMetrics(data.metrics);
-      }
-    } catch (err) {
-      console.error('Failed to fetch metrics:', err);
-    }
-  };
 
   // Check order status via SSE
   const subscribeToOrderUpdates = (resId: string) => {
@@ -128,7 +106,6 @@ export default function FlashSale() {
         setSuccess(`Purchase reserved! Reservation ID: ${data.reservationId}`);
         subscribeToOrderUpdates(data.reservationId);
         fetchSaleStatus();
-        fetchMetrics();
       } else {
         setError(data.message || data.error);
       }
@@ -142,11 +119,9 @@ export default function FlashSale() {
   // Auto-refresh
   useEffect(() => {
     fetchSaleStatus();
-    fetchMetrics();
     
     const interval = setInterval(() => {
       fetchSaleStatus();
-      fetchMetrics();
     }, 5000);
 
     return () => clearInterval(interval);
@@ -255,37 +230,6 @@ export default function FlashSale() {
           </div>
         )}
       </div>
-
-      {/* Metrics Card */}
-      {metrics && (
-        <div className="bg-white rounded-xl shadow-lg p-6">
-          <h3 className="text-xl font-bold mb-4 text-gray-900">System Performance</h3>
-
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-4 rounded-lg border border-blue-200">
-              <p className="text-xs text-gray-600 font-medium uppercase tracking-wide">Total Requests</p>
-              <p className="text-2xl font-bold text-blue-700">{metrics.requests}</p>
-            </div>
-
-            <div className="bg-gradient-to-br from-green-50 to-green-100 p-4 rounded-lg border border-green-200">
-              <p className="text-xs text-gray-600 font-medium uppercase tracking-wide">Purchases</p>
-              <p className="text-2xl font-bold text-green-700">{metrics.purchases}</p>
-            </div>
-
-            <div className="bg-gradient-to-br from-red-50 to-red-100 p-4 rounded-lg border border-red-200">
-              <p className="text-xs text-gray-600 font-medium uppercase tracking-wide">Circuit Breaker</p>
-              <p className="text-2xl font-bold text-red-700">{metrics.circuitBreakerHits}</p>
-              <p className="text-xs text-gray-600 mt-1">{(metrics.circuitBreakerHitRate * 100).toFixed(1)}% hit rate</p>
-            </div>
-
-            <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-4 rounded-lg border border-purple-200">
-              <p className="text-xs text-gray-600 font-medium uppercase tracking-wide">Queue Depth</p>
-              <p className="text-2xl font-bold text-purple-700">{metrics.queueDepth}</p>
-              <p className="text-xs text-gray-600 mt-1">{metrics.queueActive} active</p>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
