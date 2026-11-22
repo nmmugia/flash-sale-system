@@ -2,7 +2,7 @@ import { Worker, Job } from 'bullmq';
 import { logger } from './config/logger';
 import { env } from './config/env';
 import { pool } from './config/database';
-import { redis } from './config/redis';
+import { redis, redisPubSub } from './config/redis';
 import { RedisInventoryService } from './services/redisInventoryService';
 import { PubSubCoordinator } from './services/pubSubCoordinator';
 import { PaymentService } from './services/paymentService';
@@ -54,7 +54,7 @@ async function main() {
 
   // Initialize services
   const inventoryService = new RedisInventoryService(redis);
-  const pubSubCoordinator = new PubSubCoordinator(redis);
+  const pubSubCoordinator = new PubSubCoordinator(redisPubSub);
   const paymentService = new PaymentService();
   const orderRepository = new OrderRepository(pool);
 
@@ -196,7 +196,13 @@ async function main() {
   });
 
   worker.on('error', (err: Error) => {
-    logger.error({ error: err }, 'Worker error');
+    logger.error({
+      error: {
+        message: err.message,
+        stack: err.stack,
+        name: err.name,
+      }
+    }, 'Worker error');
   });
 
   logger.info('Worker started and ready to process jobs');
@@ -208,6 +214,7 @@ async function main() {
     await worker.close();
     await pool.end();
     await redis.quit();
+    await redisPubSub.quit();
 
     logger.info('Worker shutdown complete');
     process.exit(0);

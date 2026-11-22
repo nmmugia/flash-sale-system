@@ -1,6 +1,6 @@
 # Flash Sale System
 
-Everyone knows Fastify benchmarks better than Express, but I chose Express here for its maturity and ecosystem. When 100,000 users hit your system in 30 seconds, the question isn't 'which framework is fastest' - it's 'which architecture survives and what optimizations actually work'.
+Everyone knows Fastify benchmarks better than Express, but I assume that if Bookipi were to use Express because of its maturity, community and a battle-tested tech, then in this simple flash sale system, I choose to use Express and its related stack to showcase my skill&experience in both scaling&optimization. Cause when 100,000 users hit your system in 30 seconds, the real question isn't which framework is fastest, it's which architecture survives and how is the system optimization were implemented.
 
 ## The Problem
 
@@ -558,8 +558,12 @@ git clone <repo-url>
 cd flash-sale-system
 cp .env.example .env
 
-# Start everything
+# Start everything (frontend builds automatically)
 docker-compose up -d
+
+# Access the application
+# Frontend: http://localhost:8080
+# API: http://localhost:8080/api/*
 
 # Initialize a sale
 curl -X POST http://localhost:8080/api/admin/initialize-sale \
@@ -569,6 +573,8 @@ curl -X POST http://localhost:8080/api/admin/initialize-sale \
 # Run stress test
 ./run-stress-test.sh
 ```
+
+**Note:** The frontend is automatically built as part of the nginx container using a multi-stage Docker build. No separate build step required!
 
 ### Architecture
 

@@ -1,4 +1,5 @@
 import express, { Request, Response } from 'express';
+import cors from 'cors';
 import { requestLogger, addRequestId } from './middleware/requestLogger';
 import { errorHandler, asyncHandler } from './middleware/errorHandler';
 import { idempotencyMiddleware } from './middleware/idempotency';
@@ -25,6 +26,14 @@ const orderRepository = new OrderRepository(pool);
  */
 export async function createApp(): Promise<express.Application> {
   const app = express();
+
+  // CORS middleware - Allow frontend to access API
+  app.use(cors({
+    origin: true, // Allow all origins in development (nginx handles this in production)
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key'],
+  }));
 
   // Body parsing middleware
   app.use(express.json());

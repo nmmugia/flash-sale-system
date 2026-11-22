@@ -138,16 +138,14 @@ services:
         delay: 5s
         max_attempts: 3
 
-  # nginx API Gateway
+  # nginx API Gateway with Frontend
   nginx:
-    image: nginx:alpine
+    build:
+      context: .
+      dockerfile: docker/nginx/Dockerfile
     container_name: flashsale-nginx
     ports:
       - "${NGINX_PORT:-8080}:80"
-    volumes:
-      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./docker/nginx/api-gateway.conf:/etc/nginx/conf.d/default.conf:ro
-      - ./frontend/dist:/usr/share/nginx/html:ro
     depends_on:
       - api
     healthcheck:
